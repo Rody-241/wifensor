@@ -1,0 +1,56 @@
+name: Fabriquer l'appli Android
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Générer le dossier Android
+        run: |
+          flutter create --org com.wifensor --project-name wifensor --platforms=android .
+          rm -rf test
+          python3 tool/patch_android.py
+
+      - name: Installer les dépendances
+        run: flutter pub get
+
+      - name: Vérifier le code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Fabriquer l'APK
+        run: flutter build apk --release
+
+      - name: Renommer
+        run: cp build/app/outputs/flutter-apk/app-release.apk Wifensor.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Wifensor-apk
+          path: Wifensor.apk
+
+      - name: Publier en téléchargement
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Wifensor (essai ${{ github.run_number }})
+          body: Touche Wifensor.apk ci-dessous pour télécharger et installer l'appli.
+          files: Wifensor.apk
