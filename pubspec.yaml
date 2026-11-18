@@ -1,7 +1,7 @@
 name: wifensor
 description: Détecte les appareils connectés au Wi-Fi et aide à bloquer les indésirables.
 publish_to: 'none'
-version: 1.0.0+1
+version: 2.0.0+2
 
 environment:
   sdk: '>=3.6.0 <4.0.0'
@@ -12,6 +12,7 @@ dependencies:
   network_info_plus: ^6.0.0
   shared_preferences: ^2.2.3
   url_launcher: ^6.3.0
+  webview_flutter: ^4.10.0
 
 dev_dependencies:
   flutter_test:

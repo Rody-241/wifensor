@@ -83,6 +83,13 @@ class DeviceStore {
     await _save();
   }
 
+  Future<void> setMac(String id, String mac) async {
+    final d = _devices[id];
+    if (d == null) return;
+    d.mac = mac;
+    await _save();
+  }
+
   Future<void> forget(String id) async {
     _devices.remove(id);
     await _save();

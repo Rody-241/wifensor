@@ -18,6 +18,10 @@ if lines:
     xml = xml.replace("<application", lines + "    <application", 1)
 
 xml = xml.replace('android:label="wifensor"', 'android:label="Wifensor"')
+# La page d'administration de la box est en http (pas https) :
+# Android doit l'autoriser pour l'afficher dans l'appli.
+if "usesCleartextTraffic" not in xml:
+    xml = xml.replace("<application", '<application android:usesCleartextTraffic="true"', 1)
 path.write_text(xml)
 print(xml)
 
@@ -33,3 +37,14 @@ for name in ("android/app/build.gradle.kts", "android/app/build.gradle"):
         txt = re.sub(r"minSdk\s*=\s*flutter\.minSdkVersion", "minSdk = 24", txt)
         g.write_text(txt)
         print(name, "->", [l.strip() for l in txt.splitlines() if "Sdk" in l])
+
+
+# Icône Wifensor (guerrier au bouclier) : copie des ressources Android.
+import shutil
+src = pathlib.Path("android_res")
+dst = pathlib.Path("android/app/src/main/res")
+for f in src.rglob("*.xml"):
+    target = dst / f.relative_to(src)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(f, target)
+    print("icône :", target)

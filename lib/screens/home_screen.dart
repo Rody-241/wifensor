@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/device.dart';
-import '../routers/guided_connector.dart';
-import '../routers/router_connector.dart';
+import '../routers/box_guides.dart';
 import '../services/device_store.dart';
 import '../services/network_scanner.dart';
+import 'box_guide_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -37,11 +37,28 @@ class _HomeScreenState extends State<HomeScreen> {
     await _scan();
   }
 
-  RouterBrandInfo get _brand =>
-      knownBrands.firstWhere((b) => b.id == _brandId, orElse: () => knownBrands.last);
+  BoxGuide get _guide => guideById(_brandId);
 
-  RouterConnector get _connector =>
-      GuidedConnector(_brand, gatewayIp: _net?.gatewayIp);
+  String get _gatewayIp => _net?.gatewayIp ?? _guide.defaultIp;
+
+  /// Ouvre la page de la box dans l'appli, avec les étapes du guide.
+  Future<T?> _openGuide<T>(GuideMode mode, Device d, String? mac) {
+    final known = _store.get(d.id);
+    final name = (known != null && known.label.isNotEmpty) ? known.label : d.displayName;
+    return Navigator.push<T>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BoxGuideScreen(
+          guide: _guide,
+          gatewayIp: _gatewayIp,
+          mode: mode,
+          deviceIp: d.ip,
+          deviceName: name,
+          mac: mac,
+        ),
+      ),
+    );
+  }
 
   Future<void> _scan() async {
     if (_scanning) return;
@@ -145,7 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Wifensor'),
         actions: [
           IconButton(
-            tooltip: 'Mon routeur',
+            tooltip: 'Ma box',
             icon: const Icon(Icons.settings_input_antenna),
             onPressed: _openRouterSettings,
           ),
@@ -275,7 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: InputDecoration(
                 labelText: 'Adresse MAC',
                 helperText: d.mac == null
-                    ? 'Sur téléphone, la MAC n\'est pas lisible : copie-la depuis la liste « appareils connectés » de ton routeur.'
+                    ? 'Pas besoin de la connaître : si elle manque, Wifensor t\'aidera à la trouver dans ta box.'
                     : null,
                 helperMaxLines: 3,
               ),
@@ -353,56 +370,39 @@ class _HomeScreenState extends State<HomeScreen> {
       RegExp(r'^([0-9A-F]{2}[:-]){5}[0-9A-F]{2}$').hasMatch(mac);
 
   Future<void> _block(Device d, String mac, String name) async {
-    if (!_validMac(mac)) {
-      _showAlert('Adresse MAC manquante',
-          'Pour bloquer définitivement, il faut l\'adresse MAC (ex. A4:83:E7:12:34:56).\n\n'
-              'Ouvre la page de ton routeur, menu « Appareils connectés », repère l\'IP ${d.ip} et copie sa MAC.');
-      return;
-    }
     if (name.isNotEmpty) await _store.rename(d.id, name);
-    final res = await _connector.block(mac.replaceAll('-', ':'), name: name);
+    var cleanMac = mac.replaceAll('-', ':');
+
+    // 1. Pas d'adresse MAC ? On ouvre la box pour aller la chercher.
+    if (!_validMac(cleanMac)) {
+      cleanMac = _store.get(d.id)?.mac ?? '';
+    }
+    if (!_validMac(cleanMac)) {
+      final found = await _openGuide<String>(GuideMode.trouverMac, d, null);
+      if (found == null || !mounted) return;
+      cleanMac = found;
+    }
+    await _store.setMac(d.id, cleanMac);
     if (!mounted) return;
 
-    if (res.done) {
-      await _store.setStatus(d.id, DeviceStatus.bloque);
-      setState(() {});
-      return;
-    }
+    // 2. On ouvre la box sur le guide de blocage.
+    final done = await _openGuide<bool>(GuideMode.bloquer, d, cleanMac);
+    if (done != true || !mounted) return;
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Termine le blocage dans ton routeur'),
-        content: Text(res.message),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('C\'est fait')),
-        ],
-      ),
+    await _store.setStatus(d.id, DeviceStatus.bloque);
+    setState(() {});
+    _showAlert(
+      'Appareil bloqué',
+      'La box refuse maintenant l\'accès à cet appareil. '
+          'Au prochain scan, Wifensor vérifiera qu\'il a bien disparu.',
     );
-    if (confirmed == true) {
-      await _store.setStatus(d.id, DeviceStatus.bloque);
-      setState(() {});
-    }
   }
 
   Future<void> _unblock(Device d, String mac) async {
-    final res = await _connector.unblock(mac);
-    if (!mounted) return;
-    if (!res.done) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Débloquer dans ton routeur'),
-          content: Text(res.message),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('C\'est fait')),
-          ],
-        ),
-      );
-      if (ok != true) return;
-    }
+    final known = _store.get(d.id);
+    final cleanMac = _validMac(mac) ? mac.replaceAll('-', ':') : known?.mac;
+    final done = await _openGuide<bool>(GuideMode.debloquer, d, cleanMac);
+    if (done != true || !mounted) return;
     await _store.setStatus(d.id, DeviceStatus.connu);
     setState(() {});
   }
@@ -412,7 +412,7 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Mon routeur'),
+          title: const Text('Ma box'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -422,14 +422,14 @@ class _HomeScreenState extends State<HomeScreen> {
               DropdownButton<String>(
                 isExpanded: true,
                 value: _brandId,
-                items: knownBrands
+                items: boxGuides
                     .map((b) => DropdownMenuItem(value: b.id, child: Text(b.name)))
                     .toList(),
                 onChanged: (v) => setLocal(() => _brandId = v ?? 'autre'),
               ),
               const SizedBox(height: 8),
               Text(
-                'Mode actuel : guidé. Le blocage automatique par marque arrive en version 2.',
+                'Wifensor ouvre la page de ta box et te guide pas à pas pour bloquer ou débloquer un appareil.',
                 style: Theme.of(ctx).textTheme.bodySmall,
               ),
             ],

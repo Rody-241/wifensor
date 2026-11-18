@@ -1,4 +1,4 @@
-# Wifensor — version 1
+# Wifensor — version 2
 
 Détecte les appareils connectés à ton Wi-Fi, t'alerte quand un nouvel appareil
 apparaît, et t'aide à bloquer les indésirables dans ton routeur.
@@ -53,9 +53,13 @@ Pour le nom du Wi-Fi, active aussi la capacité « Access WiFi Information » da
   la MAC depuis la page « appareils connectés » du routeur.
 - **MAC privée** : les téléphones récents utilisent une MAC aléatoire par
   réseau. Elle reste stable sur ton Wi-Fi, donc le blocage marche quand même.
-- **Blocage (mode guidé)** : l'appli copie la MAC et ouvre la page de ton
-  routeur, avec l'indication du menu selon la marque. Tu colles la MAC dans la
-  liste noire.
+- **Blocage guidé dans l'appli (v2)** : Wifensor ouvre la page de la box DANS
+  l'appli, avec un bandeau d'étapes en haut (« 1. Connecte-toi », « 2. Va dans
+  Pare-feu »…). Guides précis pour Airtel ZLT, Canalbox, TP-Link, Huawei, ZTE,
+  Tenda, et un guide général pour les autres box.
+- **Aide pour l'adresse MAC** : si elle manque (cas des téléphones), l'appli
+  ouvre la liste « Appareils connectés » de la box et propose un bouton Coller.
+- **Vérification** : un appareil bloqué qui réapparaît au scan déclenche une alerte.
 - **Mémoire** : le premier scan enregistre tout comme « connu ». Ensuite, chaque
   appareil inconnu déclenche une alerte. Si un appareil bloqué réapparaît,
   l'appli te prévient.
@@ -69,14 +73,12 @@ lib/
   services/network_scanner.dart scan du réseau, ARP, noms d'hôte
   services/oui_vendors.dart    fabricants d'après la MAC
   services/device_store.dart   mémoire locale
-  routers/router_connector.dart interface commune des routeurs + marques
-  routers/guided_connector.dart mode guidé (toutes les box)
+  routers/box_guides.dart      guides pas à pas, par box
   screens/home_screen.dart     écran principal
+  screens/box_guide_screen.dart page de la box dans l'appli + bandeau d'étapes
 ```
 
-## Version 2 : ajouter un blocage automatique
+## Fabrication automatique
 
-Crée `lib/routers/tplink_connector.dart` (par exemple) qui implémente
-`RouterConnector` en appelant l'API du routeur (login, liste des clients,
-ajout à la liste noire). Choisis-le ensuite dans `_connector` de
-`home_screen.dart` selon la marque.
+À chaque envoi sur GitHub, le workflow « Fabriquer l'appli Android » génère
+Wifensor.apk (universel, Android 7+) et le publie dans les Releases.
