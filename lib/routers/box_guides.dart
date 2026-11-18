@@ -168,7 +168,7 @@ const List<BoxGuide> boxGuides = [
   ),
   BoxGuide(
     id: 'autre',
-    name: 'Autre box / je ne sais pas',
+    name: 'Autre box',
     defaultIp: '192.168.1.1',
     findMacSteps: [
       _loginGeneric,
