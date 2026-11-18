@@ -40,23 +40,17 @@ jobs:
         run: |
           flutter build apk --release
           cp build/app/outputs/flutter-apk/app-release.apk Wifensor.apk
-          flutter build apk --release --split-per-abi
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk Wifensor-leger-arm64.apk
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk Wifensor-leger-ancien.apk
           ls -la *.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: Wifensor-apk
-          path: Wifensor*.apk
+          path: Wifensor.apk
 
       - name: Publier en téléchargement
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
           name: Wifensor (essai ${{ github.run_number }})
-          body: |
-            Wifensor-leger-arm64.apk : version légère pour la plupart des téléphones récents.
-            Wifensor-leger-ancien.apk : version légère pour les téléphones plus anciens.
-            Wifensor.apk : version complète (marche partout, plus lourde).
-          files: Wifensor*.apk
+          body: Wifensor.apk fonctionne sur tous les téléphones Android 7 et plus récents, toutes marques.
+          files: Wifensor.apk
