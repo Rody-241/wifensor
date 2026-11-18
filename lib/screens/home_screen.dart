@@ -213,8 +213,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _header(ThemeData theme) {
-    final recent = _scanning ? 0 : _recentDevices.length;
-    final count = _devices.length + recent;
+    // Les appareils grisés (vus récemment mais sans réponse) ne comptent pas.
+    final count = _devices.length;
     final newCount = _devices
         .where((d) => _store.get(d.id)?.status == DeviceStatus.nouveau)
         .length;
@@ -280,9 +280,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool _isPresent(Device d) => _devices.any((x) => x.id == d.id);
-
-  String _fmtTime(DateTime t) =>
-      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   /// Appareils bloqués qui ne sont plus connectés : ils n'apparaissent pas
   /// dans le scan, donc on les garde visibles ici pour pouvoir les débloquer.
@@ -366,7 +363,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final name = (known != null && known.label.isNotEmpty) ? known.label : d.displayName;
     final present = _scanning || _isPresent(d);
     return ListTile(
-      enabled: true,
       leading: Opacity(
         opacity: present ? 1 : 0.45,
         child: CircleAvatar(
@@ -376,7 +372,6 @@ class _HomeScreenState extends State<HomeScreen> {
       title: Text(name),
       subtitle: Text([
         d.ip,
-        if (!present && known != null) 'vu à ${_fmtTime(known.lastSeen)} (en veille ?)',
         if (d.mac != null) d.mac!,
         if (d.vendor != null) d.vendor!,
         if (d.vendor == null && d.hasRandomMac) 'MAC privée',
@@ -415,13 +410,6 @@ class _HomeScreenState extends State<HomeScreen> {
             _info('Type probable', d.typeGuess),
             _info('Ports ouverts', d.openPorts.isEmpty ? 'Aucun' : d.openPorts.join(', ')),
             if (known != null) _info('Première connexion', _fmt(known.firstSeen)),
-            if (known != null)
-              _info(
-                'Dernière connexion',
-                _isPresent(d)
-                    ? '${_fmt(known.lastSeen)} (connecté maintenant)'
-                    : _fmt(known.lastSeen),
-              ),
             const SizedBox(height: 8),
             TextField(
               controller: macCtrl,
