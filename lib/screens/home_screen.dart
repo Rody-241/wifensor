@@ -96,9 +96,15 @@ class _HomeScreenState extends State<HomeScreen> {
       _scanning = false;
     });
 
+    // Un appareil « Bloqué » qui répond encore au scan n'est pas vraiment
+    // bloqué par la box : on ne garde pas un faux statut, il redevient « Connu ».
     final intruders = results
         .where((d) => _store.get(d.id)?.status == DeviceStatus.bloque)
         .toList();
+    for (final d in intruders) {
+      await _store.setStatus(d.id, DeviceStatus.connu);
+    }
+    if (intruders.isNotEmpty && mounted) setState(() {});
 
     if (newOnes.isNotEmpty) {
       _showAlert(
@@ -107,8 +113,10 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } else if (intruders.isNotEmpty) {
       _showAlert(
-        'Appareil bloqué toujours présent',
-        'Vérifie que la MAC a bien été enregistrée dans la liste noire du routeur :\n'
+        'Le blocage n\'a pas été appliqué par la box',
+        'Ces appareils sont encore connectés, donc ils ne sont pas bloqués. '
+            'Leur adresse MAC n\'est sans doute pas dans la liste de blocage de ta box. '
+            'Touche-les et refais « Bloquer » jusqu\'à « Sauvegarder » :\n'
             '${intruders.map((d) => '• ${d.ip}').join('\n')}',
       );
     }
