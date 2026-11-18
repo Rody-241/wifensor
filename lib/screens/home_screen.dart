@@ -198,10 +198,12 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
             ),
           Expanded(
-            child: ListView.builder(
+            child: ListView(
               padding: const EdgeInsets.only(bottom: 96),
-              itemCount: _devices.length,
-              itemBuilder: (_, i) => _deviceTile(_devices[i]),
+              children: [
+                ..._devices.map(_deviceTile),
+                ..._blockedSection(theme),
+              ],
             ),
           ),
         ],
@@ -245,6 +247,82 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Appareils bloqués qui ne sont plus connectés : ils n'apparaissent pas
+  /// dans le scan, donc on les garde visibles ici pour pouvoir les débloquer.
+  List<KnownDevice> get _blockedAway {
+    final present = _devices.map((d) => d.id).toSet();
+    return _store.all.values
+        .where((k) => k.status == DeviceStatus.bloque && !present.contains(k.id))
+        .toList()
+      ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
+  }
+
+  List<Widget> _blockedSection(ThemeData theme) {
+    final list = _blockedAway;
+    if (list.isEmpty) return [];
+    return [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+        child: Text(
+          'Appareils bloqués (${list.length})',
+          style: theme.textTheme.titleSmall?.copyWith(color: Colors.red),
+        ),
+      ),
+      ...list.map((k) => ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Colors.red.withValues(alpha: 0.15),
+              child: const Icon(Icons.block, color: Colors.red),
+            ),
+            title: Text(k.label.isNotEmpty ? k.label : 'Appareil bloqué'),
+            subtitle: Text([
+              if (k.mac != null) k.mac!,
+              'N\'a plus accès au Wi-Fi',
+            ].join(' · ')),
+            trailing: TextButton(
+              onPressed: () => _unblockKnown(k),
+              child: const Text('Débloquer'),
+            ),
+          )),
+    ];
+  }
+
+  Future<void> _unblockKnown(KnownDevice k) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Débloquer ${k.label.isNotEmpty ? k.label : 'cet appareil'} ?'),
+        content: const Text(
+            'Wifensor va ouvrir la page de ta box pour retirer cet appareil de la liste de blocage. '
+            'Il pourra ensuite se reconnecter à ton Wi-Fi.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continuer')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final d = Device(ip: k.lastIp ?? '', mac: k.mac, hostname: k.label);
+    final done = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BoxGuideScreen(
+          guide: _guide,
+          gatewayIp: _gatewayIp,
+          mode: GuideMode.debloquer,
+          deviceIp: d.ip,
+          deviceName: k.label.isNotEmpty ? k.label : 'cet appareil',
+          mac: k.mac,
+        ),
+      ),
+    );
+    if (done != true || !mounted) return;
+    await _store.setStatus(k.id, DeviceStatus.connu);
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Débloqué : il peut se reconnecter.')),
     );
   }
 
