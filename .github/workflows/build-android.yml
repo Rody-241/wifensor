@@ -30,6 +30,20 @@ jobs:
           rm -rf test
           python3 tool/patch_android.py
 
+      - name: Clé de signature fixe (mêmes clés pour toutes les versions)
+        env:
+          WIFENSOR_KEY_PASSWORD: ${{ secrets.WIFENSOR_KEY_PASSWORD }}
+        run: |
+          if [ -z "$WIFENSOR_KEY_PASSWORD" ]; then
+            echo "::error::Le secret WIFENSOR_KEY_PASSWORD manque : ajoute-le dans Settings › Secrets and variables › Actions."
+            exit 1
+          fi
+          mkdir -p ~/.android
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+            -in signing/wifensor-key.enc -out ~/.android/debug.keystore \
+            -pass env:WIFENSOR_KEY_PASSWORD
+          keytool -list -keystore ~/.android/debug.keystore -storepass android | grep -i "SHA-256"
+
       - name: Installer les dépendances
         run: flutter pub get
 
