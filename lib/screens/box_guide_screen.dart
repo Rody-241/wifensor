@@ -70,7 +70,9 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
     if (_webSupported) {
       _web = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..addJavaScriptChannel('Wifensor', onMessageReceived: _onMacFromPage)
         ..setNavigationDelegate(NavigationDelegate(
+          onPageFinished: (_) => _injectHelper(),
           onProgress: (p) {
             if (mounted) setState(() => _progress = p);
           },
@@ -85,6 +87,81 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
         ))
         ..loadRequest(Uri.parse(_url));
     }
+  }
+
+  /// Script injecté dans la page de la box :
+  /// - mode « trouver » : repère la ligne qui contient l'IP de l'appareil et
+  ///   renvoie l'adresse MAC trouvée sur cette ligne ; toucher une adresse
+  ///   MAC dans la page la renvoie aussi ;
+  /// - modes « bloquer / débloquer » : quand on touche un champ dont le nom
+  ///   parle de MAC, il est rempli tout seul.
+  String get _helperJs {
+    // Dans la chaîne JS, « \\. » donne « \. » : un vrai point dans l'expression.
+    final ip = widget.deviceIp.replaceAll('.', r'\\.');
+    final mac = (widget.mac ?? '').replaceAll("'", '');
+    final find = widget.mode == GuideMode.trouverMac;
+    return '''
+(function(){
+  if (window.__wifensor) return; window.__wifensor = 1;
+  var reMac = /([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}/;
+  var reIp = new RegExp('(^|[^0-9])$ip([^0-9]|\$)');
+  function send(m){ try { Wifensor.postMessage(m.toUpperCase().replace(/-/g, ':')); } catch(e){} }
+  if ($find) {
+    var last = '';
+    setInterval(function(){
+      var rows = document.querySelectorAll('tr, li, [role=row], [class*=row], [class*=item]');
+      for (var i = 0; i < rows.length; i++) {
+        var t = rows[i].innerText || '';
+        if (t.length < 400 && reIp.test(t)) {
+          var m = t.match(reMac);
+          if (m && m[0] !== last) { last = m[0]; send(m[0]); }
+          return;
+        }
+      }
+    }, 1500);
+    document.addEventListener('click', function(e){
+      var n = e.target;
+      for (var k = 0; k < 4 && n; k++, n = n.parentElement) {
+        var t = n.innerText || '';
+        if (t.length < 200) { var m = t.match(reMac); if (m) { send(m[0]); return; } }
+      }
+    }, true);
+  } else if ('$mac') {
+    document.addEventListener('focusin', function(e){
+      var f = e.target;
+      if (!f || f.tagName !== 'INPUT' || f.value) return;
+      var hint = [f.name, f.id, f.placeholder, f.getAttribute('aria-label')].join(' ');
+      var lab = f.closest('label, tr, div');
+      if (!/mac/i.test(hint) && !(lab && /mac/i.test((lab.innerText || '').slice(0, 80)))) return;
+      f.value = '$mac';
+      f.dispatchEvent(new Event('input', { bubbles: true }));
+      f.dispatchEvent(new Event('change', { bubbles: true }));
+    }, true);
+  }
+})();
+''';
+  }
+
+  Future<void> _injectHelper() async {
+    try {
+      await _web?.runJavaScript(_helperJs);
+    } catch (_) {
+      // La page ne permet pas le script : l'utilisateur tape l'adresse lui-même.
+    }
+  }
+
+  void _onMacFromPage(JavaScriptMessage msg) {
+    if (!mounted || widget.mode != GuideMode.trouverMac) return;
+    final mac = msg.message.trim().toUpperCase();
+    if (mac == _macCtrl.text) return;
+    setState(() {
+      _macCtrl.text = mac;
+      _macError = null;
+      _step = _steps.length - 1;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Adresse MAC trouvée : $mac'), duration: const Duration(seconds: 2)),
+    );
   }
 
   @override
@@ -109,17 +186,6 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Adresse MAC copiée : $mac')),
     );
-  }
-
-  Future<void> _pasteMac() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    final text = data?.text?.trim();
-    if (text == null || text.isEmpty) return;
-    final found = RegExp(r'([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}').firstMatch(text);
-    setState(() {
-      _macCtrl.text = (found?.group(0) ?? text).toUpperCase();
-      _macError = null;
-    });
   }
 
   void _validateMac() {
@@ -263,11 +329,7 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
                   errorText: _macError,
                   errorMaxLines: 3,
                   border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    tooltip: 'Coller',
-                    icon: const Icon(Icons.content_paste),
-                    onPressed: _pasteMac,
-                  ),
+                  hintText: 'Se remplit toute seule depuis la page de la box',
                 ),
                 onChanged: (_) {
                   if (_macError != null) setState(() => _macError = null);

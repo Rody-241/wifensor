@@ -46,13 +46,13 @@ const List<BoxGuide> boxGuides = [
       'Connecte-toi : nom d\'utilisateur « admin ». Le mot de passe d\'usine est souvent « admin » aussi.',
       'Sur l\'accueil, descends jusqu\'au tableau « Appareils connectés ».',
       'Repère la ligne de l\'appareil {ip}, puis fais glisser le tableau vers la droite pour voir sa colonne MAC.',
-      'Appuie longuement sur l\'adresse MAC pour la copier, puis colle-la en bas de l\'écran.',
+      'Wifensor repère l\'adresse MAC tout seul et l\'écrit en bas. Sinon, touche-la dans le tableau. Puis « Valider ».',
     ],
     blockSteps: [
       'Connecte-toi : nom d\'utilisateur « admin ».',
       'Touche le menu ☰ en haut à gauche, puis « Pare-feu », puis « Règles de filtrage ».',
       'Onglet « Filtres MAC » : vérifie que « Liste de blocage » est choisi.',
-      'Touche « Ajouter » et colle l\'adresse MAC {mac} (bouton « Copier » en bas).',
+      'Touche « Ajouter » et touche le champ de l\'adresse MAC : Wifensor écrit {mac} tout seul.',
       'Coche « Activer » si la case existe, valide, puis touche « Sauvegarder les paramètres ».',
     ],
     unblockSteps: [
@@ -68,13 +68,13 @@ const List<BoxGuide> boxGuides = [
     findMacSteps: [
       _loginGeneric,
       'Cherche une page « Appareils connectés », « Clients », « Réseau local » ou « LAN ».',
-      'Repère l\'appareil {ip} et copie son adresse MAC, puis colle-la en bas de l\'écran.',
+      'Repère l\'appareil {ip} et touche son adresse MAC : Wifensor l\'écrit en bas. Puis « Valider ».',
     ],
     blockSteps: [
       _loginGeneric,
       'Cherche « Wi-Fi » ou « WLAN », puis « Filtrage MAC » ou « Contrôle d\'accès ».',
       'Choisis le mode « Liste noire » (ou « Bloquer »).',
-      'Ajoute l\'adresse MAC {mac} (bouton « Copier » en bas), puis enregistre.',
+      'Ajoute l\'adresse MAC {mac} (Wifensor la remplit quand tu touches le champ), puis enregistre.',
     ],
     unblockSteps: [
       _loginGeneric,
@@ -89,7 +89,7 @@ const List<BoxGuide> boxGuides = [
     findMacSteps: [
       _loginGeneric,
       'Ouvre « Clients » ou « Appareils connectés » (souvent sur l\'accueil, ou dans « Avancé › Réseau »).',
-      'Repère l\'appareil {ip} et copie son adresse MAC, puis colle-la en bas de l\'écran.',
+      'Repère l\'appareil {ip} et touche son adresse MAC : Wifensor l\'écrit en bas. Puis « Valider ».',
     ],
     blockSteps: [
       _loginGeneric,
@@ -110,7 +110,7 @@ const List<BoxGuide> boxGuides = [
     findMacSteps: [
       _loginGeneric,
       'Ouvre « Appareils » ou « Terminaux connectés ».',
-      'Touche l\'appareil {ip} pour voir son adresse MAC, copie-la puis colle-la en bas de l\'écran.',
+      'Touche l\'appareil {ip}, puis son adresse MAC : Wifensor l\'écrit en bas. Puis « Valider ».',
     ],
     blockSteps: [
       _loginGeneric,
@@ -131,7 +131,7 @@ const List<BoxGuide> boxGuides = [
     findMacSteps: [
       _loginGeneric,
       'Ouvre « État › Réseau local » ou « Appareils connectés ».',
-      'Repère l\'appareil {ip} et copie son adresse MAC, puis colle-la en bas de l\'écran.',
+      'Repère l\'appareil {ip} et touche son adresse MAC : Wifensor l\'écrit en bas. Puis « Valider ».',
     ],
     blockSteps: [
       _loginGeneric,
@@ -152,7 +152,7 @@ const List<BoxGuide> boxGuides = [
     findMacSteps: [
       _loginGeneric,
       'Ouvre « Appareils connectés » ou « Gestion des clients ».',
-      'Repère l\'appareil {ip} et copie son adresse MAC, puis colle-la en bas de l\'écran.',
+      'Repère l\'appareil {ip} et touche son adresse MAC : Wifensor l\'écrit en bas. Puis « Valider ».',
     ],
     blockSteps: [
       _loginGeneric,
@@ -173,7 +173,7 @@ const List<BoxGuide> boxGuides = [
     findMacSteps: [
       _loginGeneric,
       'Cherche une page « Appareils connectés », « Clients », « DHCP » ou « LAN ».',
-      'Repère l\'appareil {ip} et copie son adresse MAC (6 paires comme A4:83:E7:12:34:56), puis colle-la en bas de l\'écran.',
+      'Repère l\'appareil {ip} et touche son adresse MAC (6 paires comme A4:83:E7:12:34:56) : Wifensor l\'écrit en bas. Puis « Valider ».',
     ],
     blockSteps: [
       _loginGeneric,
