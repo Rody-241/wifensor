@@ -33,12 +33,10 @@ class DeviceStore {
     );
   }
 
-  /// Le premier scan enregistre tout comme « connu » (pas d'alerte inutile).
   bool get isFirstRun => _devices.isEmpty;
 
   /// Met à jour la mémoire après un scan et renvoie les nouveaux appareils.
   Future<List<Device>> recordScan(List<Device> scanned) async {
-    final firstRun = isFirstRun;
     final now = DateTime.now();
     final newOnes = <Device>[];
 
@@ -48,7 +46,9 @@ class DeviceStore {
         _devices[d.id] = KnownDevice(
           id: d.id,
           label: d.displayName,
-          status: (firstRun || d.isSelf || d.isGateway)
+          // Dès le premier scan, tout appareil (sauf la box et ce téléphone)
+          // est « Nouveau » : l'utilisateur dit lui-même lesquels sont à lui.
+          status: (d.isSelf || d.isGateway)
               ? DeviceStatus.connu
               : DeviceStatus.nouveau,
           lastIp: d.ip,
@@ -56,7 +56,7 @@ class DeviceStore {
           firstSeen: now,
           lastSeen: now,
         );
-        if (!firstRun && !d.isSelf && !d.isGateway) newOnes.add(d);
+        if (!d.isSelf && !d.isGateway) newOnes.add(d);
       } else {
         existing.lastSeen = now;
         existing.lastIp = d.ip;

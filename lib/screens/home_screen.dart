@@ -89,6 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
 
+    final firstScan = _store.isFirstRun;
     final newOnes = await _store.recordScan(results);
     if (!mounted) return;
     setState(() {
@@ -108,8 +109,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (newOnes.isNotEmpty) {
       _showAlert(
-        '${newOnes.length} nouvel(s) appareil(s)',
-        newOnes.map((d) => '• ${d.displayName} (${d.ip})').join('\n'),
+        firstScan
+            ? '${newOnes.length} appareil(s) à vérifier'
+            : '${newOnes.length} nouvel(s) appareil(s)',
+        '${firstScan ? 'Touche chacun : « Fiable » pour les tiens, « Bloquer » pour les intrus.\n\n' : ''}'
+        '${newOnes.map((d) => '• ${d.displayName} (${d.ip})').join('\n')}',
       );
     } else if (intruders.isNotEmpty) {
       _showAlert(
