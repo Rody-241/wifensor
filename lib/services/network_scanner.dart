@@ -26,9 +26,16 @@ class NetworkScanner {
   /// Une connexion acceptée OU refusée prouve que l'appareil existe.
   static const List<int> probePorts = [
     80, 443, 53, 22, 445, 139, 62078, 8080, 554, 8008, 9100, 631, 5000, 7000,
+    5555, 49152, 8443, 1900,
   ];
 
-  static const Duration probeTimeout = Duration(milliseconds: 600);
+  /// Les téléphones en veille répondent lentement : on passe plusieurs fois,
+  /// avec un délai qui grandit, et seulement sur les adresses encore muettes.
+  static const List<Duration> passTimeouts = [
+    Duration(milliseconds: 700),
+    Duration(milliseconds: 1500),
+    Duration(milliseconds: 2500),
+  ];
   static const int parallelHosts = 32;
 
   final NetworkInfo _info = NetworkInfo();
@@ -88,27 +95,36 @@ class NetworkScanner {
     void Function(Device device)? onFound,
   }) async {
     final found = <String, Device>{};
-    final hosts = List.generate(254, (i) => '${net.prefix}${i + 1}');
-    var done = 0;
+    final all = List.generate(254, (i) => '${net.prefix}${i + 1}');
 
-    for (var i = 0; i < hosts.length; i += parallelHosts) {
-      final batch = hosts.skip(i).take(parallelHosts);
-      await Future.wait(batch.map((host) async {
-        final ports = await _probeHost(host);
-        final isSelf = host == net.selfIp;
-        if (ports != null || isSelf) {
-          final d = Device(
-            ip: host,
-            openPorts: ports ?? [],
-            isGateway: host == net.gatewayIp,
-            isSelf: isSelf,
-          );
-          found[host] = d;
-          onFound?.call(d);
-        }
-        done++;
-        onProgress?.call(done / hosts.length);
-      }));
+    // Petit paquet UDP vers chaque adresse : ça réveille les appareils en
+    // veille avant les vrais tests.
+    await _nudge(all);
+
+    for (var pass = 0; pass < passTimeouts.length; pass++) {
+      final hosts = all.where((h) => !found.containsKey(h)).toList();
+      var done = 0;
+      for (var i = 0; i < hosts.length; i += parallelHosts) {
+        final batch = hosts.skip(i).take(parallelHosts);
+        await Future.wait(batch.map((host) async {
+          final ports = await _probeHost(host, passTimeouts[pass]);
+          final isSelf = host == net.selfIp;
+          if (ports != null || isSelf) {
+            final d = Device(
+              ip: host,
+              openPorts: ports ?? [],
+              isGateway: host == net.gatewayIp,
+              isSelf: isSelf,
+            );
+            found[host] = d;
+            onFound?.call(d);
+          }
+          done++;
+          onProgress?.call(
+              (pass + done / hosts.length) / passTimeouts.length);
+        }));
+      }
+      if (pass == 0) await _nudge(all.where((h) => !found.containsKey(h)));
     }
 
     // Une fois les appareils « réveillés », la table ARP de l'OS est remplie :
@@ -137,13 +153,31 @@ class NetworkScanner {
   int _lastOctet(String ip) => int.tryParse(ip.split('.').last) ?? 0;
 
   /// Renvoie la liste des ports ouverts si l'hôte existe, sinon null.
-  Future<List<int>?> _probeHost(String host) async {
+  Future<void> _nudge(Iterable<String> hosts) async {
+    RawDatagramSocket? sock;
+    try {
+      sock = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+      final data = [0];
+      for (final h in hosts) {
+        for (final port in const [9, 137, 5353]) {
+          sock.send(data, InternetAddress(h), port);
+        }
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 400));
+    } catch (_) {
+      // Pas grave : les tests TCP suivent.
+    } finally {
+      sock?.close();
+    }
+  }
+
+  Future<List<int>?> _probeHost(String host, Duration timeout) async {
     var alive = false;
     final open = <int>[];
 
     await Future.wait(probePorts.map((port) async {
       try {
-        final s = await Socket.connect(host, port, timeout: probeTimeout);
+        final s = await Socket.connect(host, port, timeout: timeout);
         s.destroy();
         alive = true;
         open.add(port);

@@ -202,6 +202,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.only(bottom: 96),
               children: [
                 ..._devices.map(_deviceTile),
+                if (!_scanning) ..._recentDevices.map(_deviceTile),
                 ..._blockedSection(theme),
               ],
             ),
@@ -212,7 +213,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _header(ThemeData theme) {
-    final count = _devices.length;
+    final recent = _scanning ? 0 : _recentDevices.length;
+    final count = _devices.length + recent;
     final newCount = _devices
         .where((d) => _store.get(d.id)?.status == DeviceStatus.nouveau)
         .length;
@@ -249,6 +251,38 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  /// Un téléphone en veille peut ne pas répondre à un scan. Un appareil vu
+  /// il y a moins de 15 minutes reste donc affiché (en grisé) au lieu de
+  /// disparaître, pour que la liste ne change pas à chaque scan.
+  static const Duration _recentWindow = Duration(minutes: 15);
+
+  List<Device> get _recentDevices {
+    final ids = _devices.map((d) => d.id).toSet();
+    final ips = _devices.map((d) => d.ip).toSet();
+    final now = DateTime.now();
+    final list = _store.all.values
+        .where((k) =>
+            k.status != DeviceStatus.bloque &&
+            !ids.contains(k.id) &&
+            k.lastIp != null &&
+            !ips.contains(k.lastIp) &&
+            now.difference(k.lastSeen) < _recentWindow)
+        .toList()
+      ..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
+    return list
+        .map((k) => Device(
+              ip: k.lastIp!,
+              mac: k.id.startsWith('ip:') ? null : k.mac,
+              hostname: k.label,
+            ))
+        .toList();
+  }
+
+  bool _isPresent(Device d) => _devices.any((x) => x.id == d.id);
+
+  String _fmtTime(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   /// Appareils bloqués qui ne sont plus connectés : ils n'apparaissent pas
   /// dans le scan, donc on les garde visibles ici pour pouvoir les débloquer.
@@ -330,14 +364,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final known = _store.get(d.id);
     final status = known?.status;
     final name = (known != null && known.label.isNotEmpty) ? known.label : d.displayName;
+    final present = _scanning || _isPresent(d);
     return ListTile(
-      leading: CircleAvatar(
+      enabled: true,
+      leading: Opacity(
+        opacity: present ? 1 : 0.45,
+        child: CircleAvatar(
         backgroundColor: _statusColor(status).withValues(alpha: 0.15),
         child: Icon(_iconFor(d), color: _statusColor(status)),
-      ),
+      )),
       title: Text(name),
       subtitle: Text([
         d.ip,
+        if (!present && known != null) 'vu à ${_fmtTime(known.lastSeen)} (en veille ?)',
         if (d.mac != null) d.mac!,
         if (d.vendor != null) d.vendor!,
         if (d.vendor == null && d.hasRandomMac) 'MAC privée',
@@ -375,7 +414,14 @@ class _HomeScreenState extends State<HomeScreen> {
             _info('Fabricant', d.vendor ?? (d.hasRandomMac ? 'Inconnu (MAC privée)' : 'Inconnu')),
             _info('Type probable', d.typeGuess),
             _info('Ports ouverts', d.openPorts.isEmpty ? 'Aucun' : d.openPorts.join(', ')),
-            if (known != null) _info('Vu pour la 1re fois', _fmt(known.firstSeen)),
+            if (known != null) _info('Première connexion', _fmt(known.firstSeen)),
+            if (known != null)
+              _info(
+                'Dernière connexion',
+                _isPresent(d)
+                    ? '${_fmt(known.lastSeen)} (connecté maintenant)'
+                    : _fmt(known.lastSeen),
+              ),
             const SizedBox(height: 8),
             TextField(
               controller: macCtrl,
