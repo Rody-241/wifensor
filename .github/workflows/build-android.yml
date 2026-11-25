@@ -67,4 +67,6 @@ jobs:
           tag_name: build-${{ github.run_number }}
           name: Wifensor (essai ${{ github.run_number }})
           body: Wifensor.apk fonctionne sur tous les téléphones Android 7 et plus récents, toutes marques.
-          files: Wifensor.apk
+          files: |
+            Wifensor.apk
+            store/icon.png
