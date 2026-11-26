@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/device.dart';
 import '../routers/box_guides.dart';
+import '../services/box_detector.dart';
 import '../services/device_store.dart';
 import '../services/network_scanner.dart';
 import 'box_guide_screen.dart';
@@ -23,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   double _progress = 0;
   String? _error;
   String _brandId = 'autre';
+  bool _brandAuto = false;
 
   @override
   void initState() {
@@ -34,7 +36,23 @@ class _HomeScreenState extends State<HomeScreen> {
     await _store.load();
     final cfg = await _store.loadRouterConfig();
     _brandId = cfg['brand'] ?? 'autre';
+    _brandAuto = cfg['source'] == 'auto';
+    final manual = cfg['source'] == 'manual';
     await _scan();
+    if (!manual) await _detectBox();
+  }
+
+  /// Reconnaît la box tout seul (sauf si l'utilisateur l'a choisie à la main).
+  Future<void> _detectBox() async {
+    final ip = _net?.gatewayIp;
+    if (ip == null) return;
+    final found = await BoxDetector().detect(ip);
+    if (found == null || !mounted) return;
+    await _store.saveRouterConfig({'brand': found, 'source': 'auto'});
+    setState(() {
+      _brandId = found;
+      _brandAuto = true;
+    });
   }
 
   BoxGuide get _guide => guideById(_brandId);
@@ -542,6 +560,14 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Adresse : ${_net?.gatewayIp ?? 'inconnue'}'),
+              if (_brandAuto)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Reconnue automatiquement. Change-la si ce n\'est pas la bonne.',
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
+                ),
               const SizedBox(height: 12),
               DropdownButton<String>(
                 isExpanded: true,
@@ -561,7 +587,8 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             FilledButton(
               onPressed: () async {
-                await _store.saveRouterConfig({'brand': _brandId});
+                await _store.saveRouterConfig({'brand': _brandId, 'source': 'manual'});
+                _brandAuto = false;
                 if (ctx.mounted) Navigator.pop(ctx);
                 setState(() {});
               },

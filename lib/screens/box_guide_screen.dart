@@ -42,6 +42,12 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
   WebViewController? _web;
   final _macCtrl = TextEditingController();
   int _step = 0;
+
+  /// Où en est l'utilisateur dans la page de la box, d'après le script :
+  /// login, home, filter (page de filtrage), adding (champ MAC visible),
+  /// listed (l'adresse MAC apparaît dans la liste de filtrage).
+  String _pageState = '';
+  bool _macListed = false;
   int _progress = 0;
   String? _loadError;
   String? _macError;
@@ -70,7 +76,7 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
     if (_webSupported) {
       _web = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..addJavaScriptChannel('Wifensor', onMessageReceived: _onMacFromPage)
+        ..addJavaScriptChannel('Wifensor', onMessageReceived: _onMessage)
         ..setNavigationDelegate(NavigationDelegate(
           onPageFinished: (_) => _injectHelper(),
           onProgress: (p) {
@@ -105,7 +111,31 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
   if (window.__wifensor) return; window.__wifensor = 1;
   var reMac = /([0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}/;
   var reIp = new RegExp('(^|[^0-9])$ip([^0-9]|\$)');
-  function send(m){ try { Wifensor.postMessage(m.toUpperCase().replace(/-/g, ':')); } catch(e){} }
+  function post(m){ try { Wifensor.postMessage(m); } catch(e){} }
+  function send(m){ post('mac:' + m.toUpperCase().replace(/-/g, ':')); }
+  function norm(t){ return (t || '').toUpperCase().replace(/-/g, ':'); }
+  function visible(el){ return el && el.offsetParent !== null; }
+  var wanted = '$mac'.toUpperCase();
+  var reFilter = /filtr[a-z]* *(par )?(adresse )?mac|mac filter|liste de blocage|liste noire|blacklist|block ?list|contr[oô]le d.acc[eè]s|access control/i;
+  var lastState = '';
+  setInterval(function(){
+    var body = document.body ? (document.body.innerText || '') : '';
+    var pwd = Array.prototype.some.call(document.querySelectorAll('input[type=password]'), visible);
+    var state = 'home';
+    if (pwd && !reFilter.test(body)) state = 'login';
+    else if (reFilter.test(body)) {
+      state = 'filter';
+      var macInput = Array.prototype.some.call(document.querySelectorAll('input'), function(f){
+        if (!visible(f) || f.type === 'password') return false;
+        var hint = [f.name, f.id, f.placeholder, f.getAttribute('aria-label')].join(' ');
+        var lab = f.closest('label, tr, div');
+        return /mac/i.test(hint) || (lab && /mac/i.test((lab.innerText || '').slice(0, 80)));
+      });
+      if (macInput) state = 'adding';
+      if (wanted && norm(body).indexOf(wanted) >= 0) state = 'listed';
+    }
+    if (state !== lastState) { lastState = state; post('state:' + state); }
+  }, 1200);
   if ($find) {
     var last = '';
     setInterval(function(){
@@ -150,9 +180,86 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
     }
   }
 
-  void _onMacFromPage(JavaScriptMessage msg) {
+  void _onMessage(JavaScriptMessage msg) {
+    final m = msg.message.trim();
+    if (m.startsWith('state:')) {
+      _onPageState(m.substring(6));
+    } else if (m.startsWith('mac:')) {
+      _onMacFromPage(m.substring(4));
+    }
+  }
+
+  /// Fait avancer le bandeau tout seul selon la page de la box.
+  void _onPageState(String state) {
+    if (!mounted) return;
+    final last = _steps.length - 1;
+    int? step;
+    switch (widget.mode) {
+      case GuideMode.trouverMac:
+        step = switch (state) { 'login' => 0, 'home' => 1, _ => null };
+      case GuideMode.bloquer:
+        step = switch (state) {
+          'login' => 0,
+          'home' => 1,
+          'filter' => 2,
+          'adding' => 3,
+          'listed' => last,
+          _ => null,
+        };
+      case GuideMode.debloquer:
+        step = switch (state) {
+          'login' => 0,
+          'home' => 1,
+          'filter' || 'adding' || 'listed' => last,
+          _ => null,
+        };
+    }
+    setState(() {
+      _pageState = state;
+      if (state == 'listed') _macListed = true;
+      if (state == 'filter' || state == 'adding') _macListed = false;
+      if (step != null) _step = step.clamp(0, last).toInt();
+    });
+  }
+
+  /// Avant d'accepter « C'est fait », on vérifie dans la page de la box.
+  Future<void> _confirmDone() async {
+    final blocking = widget.mode == GuideMode.bloquer;
+    final onFilterPage = _pageState == 'filter' || _pageState == 'adding' || _pageState == 'listed';
+    final ok = blocking ? _macListed : (onFilterPage && !_macListed);
+    if (ok || _web == null) {
+      Navigator.pop(context, true);
+      return;
+    }
+    final force = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+        title: Text(blocking ? 'Pas encore bloqué' : 'Pas encore débloqué'),
+        content: Text(blocking
+            ? 'Wifensor ne voit pas l\'adresse ${widget.mac ?? ''} dans la liste de blocage de ta box.\n\n'
+                'Ouvre la liste de blocage, touche « Ajouter », puis « Sauvegarder ». '
+                'Tant que ce n\'est pas fait, l\'appareil garde l\'accès au Wi-Fi.'
+            : 'Ouvre la liste de blocage de ta box et vérifie que l\'adresse ${widget.mac ?? ''} '
+                'n\'y est plus, puis touche « Sauvegarder ».'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('C\'est fait quand même'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Je termine'),
+          ),
+        ],
+      ),
+    );
+    if (force == true && mounted) Navigator.pop(context, true);
+  }
+
+  void _onMacFromPage(String raw) {
     if (!mounted || widget.mode != GuideMode.trouverMac) return;
-    final mac = msg.message.trim().toUpperCase();
+    final mac = raw.trim().toUpperCase();
     if (mac == _macCtrl.text) return;
     setState(() {
       _macCtrl.text = mac;
@@ -362,7 +469,7 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
           const SizedBox(width: 8),
           FilledButton.icon(
             style: blocking ? FilledButton.styleFrom(backgroundColor: Colors.red) : null,
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: _confirmDone,
             icon: Icon(blocking ? Icons.block : Icons.lock_open),
             label: const Text('C\'est fait'),
           ),
