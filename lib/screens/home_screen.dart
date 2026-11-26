@@ -6,6 +6,9 @@ import '../services/box_detector.dart';
 import '../services/device_store.dart';
 import '../services/network_scanner.dart';
 import 'box_guide_screen.dart';
+import '../widgets/radar.dart';
+import '../widgets/wf_logo.dart';
+import '../widgets/wf_style.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -158,13 +161,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Color _statusColor(DeviceStatus? s) => switch (s) {
-        DeviceStatus.nouveau => Colors.orange,
-        DeviceStatus.fiable => Colors.green,
-        DeviceStatus.bloque => Colors.red,
-        _ => Colors.blueGrey,
-      };
-
   String _statusLabel(DeviceStatus? s) => switch (s) {
         DeviceStatus.nouveau => 'Nouveau',
         DeviceStatus.fiable => 'Fiable',
@@ -188,43 +184,32 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Wifensor'),
-        actions: [
-          IconButton(
-            tooltip: 'Ma box',
-            icon: const Icon(Icons.settings_input_antenna),
-            onPressed: _openRouterSettings,
-          ),
-        ],
-      ),
+      backgroundColor: WfColors.page,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: WfColors.red,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         onPressed: _scanning ? null : _scan,
-        icon: _scanning
-            ? const SizedBox(
-                width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.radar),
-        label: Text(_scanning ? 'Scan ${(_progress * 100).round()} %' : 'Scanner'),
+        icon: const Icon(Icons.radar),
+        label: Text(
+          _scanning ? 'Scan ${(_progress * 100).round()} %' : 'Scanner',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        ),
       ),
-      body: Column(
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 110),
         children: [
-          if (_scanning) LinearProgressIndicator(value: _progress),
           _header(theme),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.all(24),
-              child: Text(_error!, style: TextStyle(color: theme.colorScheme.error)),
+              child: Text(_error!, style: const TextStyle(color: WfColors.red)),
             ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.only(bottom: 96),
-              children: [
-                ..._devices.map(_deviceTile),
-                if (!_scanning) ..._recentDevices.map(_deviceTile),
-                ..._blockedSection(theme),
-              ],
-            ),
-          ),
+          const SizedBox(height: 8),
+          ..._devices.map(_deviceTile),
+          if (!_scanning) ..._recentDevices.map(_deviceTile),
+          ..._blockedSection(theme),
         ],
       ),
     );
@@ -236,35 +221,62 @@ class _HomeScreenState extends State<HomeScreen> {
     final newCount = _devices
         .where((d) => _store.get(d.id)?.status == DeviceStatus.nouveau)
         .length;
-    return Card(
-      margin: const EdgeInsets.all(12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Text('$count', style: theme.textTheme.displaySmall),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    final boxName = _guide.name.split(' (').first;
+    return Container(
+      color: WfColors.navy,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 8, 22),
+          child: Column(
+            children: [
+              Row(
                 children: [
-                  Text('appareil(s) connecté(s)', style: theme.textTheme.titleMedium),
-                  Text(
-                    [
-                      if (_net?.wifiName != null) 'Wi-Fi : ${_net!.wifiName}',
-                      if (_net != null) 'Routeur : ${_net!.gatewayIp}',
-                    ].join('  ·  '),
-                    style: theme.textTheme.bodySmall,
+                  const WfLogo(size: 36),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text('Wifensor',
+                        style: TextStyle(
+                            color: Colors.white, fontSize: 21, fontWeight: FontWeight.w700)),
+                  ),
+                  IconButton(
+                    tooltip: 'Ma box',
+                    icon: const Icon(Icons.router_outlined, color: WfColors.gold),
+                    onPressed: _openRouterSettings,
                   ),
                 ],
               ),
-            ),
-            if (newCount > 0)
-              Chip(
-                label: Text('$newCount nouveau(x)'),
-                backgroundColor: Colors.orange.withValues(alpha: 0.2),
+              const SizedBox(height: 10),
+              RadarView(
+                scanning: _scanning,
+                count: count,
+                dots: _devices.map((d) => WfColors.dot(_store.get(d.id)?.status)).toList(),
               ),
-          ],
+              const SizedBox(height: 12),
+              Text(
+                [
+                  count > 1 ? 'appareils connectés' : 'appareil connecté',
+                  if (_net != null) boxName,
+                ].join(' · '),
+                style: const TextStyle(color: Color(0xFFC9D6EA), fontSize: 14),
+              ),
+              if (_net?.wifiName != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text('Wi-Fi : ${_net!.wifiName}',
+                      style: const TextStyle(color: Color(0xFF8FA3C0), fontSize: 12)),
+                ),
+              if (newCount > 0 && !_scanning)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: StatusPill(
+                    label: newCount > 1 ? '$newCount nouveaux à vérifier' : '1 nouveau à vérifier',
+                    fg: Colors.white,
+                    bg: WfColors.red,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -314,23 +326,25 @@ class _HomeScreenState extends State<HomeScreen> {
     if (list.isEmpty) return [];
     return [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+        padding: const EdgeInsets.fromLTRB(18, 18, 16, 4),
         child: Text(
           'Appareils bloqués (${list.length})',
-          style: theme.textTheme.titleSmall?.copyWith(color: Colors.red),
+          style: const TextStyle(
+              color: Color(0xFFA3191E), fontSize: 13, fontWeight: FontWeight.w700),
         ),
       ),
-      ...list.map((k) => ListTile(
-            leading: CircleAvatar(
-              backgroundColor: Colors.red.withValues(alpha: 0.15),
-              child: const Icon(Icons.block, color: Colors.red),
-            ),
-            title: Text(k.label.isNotEmpty ? k.label : 'Appareil bloqué'),
-            subtitle: Text([
-              if (k.mac != null) k.mac!,
-              'N\'a plus accès au Wi-Fi',
-            ].join(' · ')),
+      ...list.map((k) => DeviceCard(
+            icon: Icons.shield_outlined,
+            iconFg: WfColors.gold,
+            iconBg: WfColors.navy,
+            title: k.label.isNotEmpty ? k.label : 'Appareil bloqué',
+            subtitle: 'N\'a plus accès au Wi-Fi',
             trailing: TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFFF1EFE8),
+                foregroundColor: const Color(0xFF444441),
+                shape: const StadiumBorder(),
+              ),
               onPressed: () => _unblockKnown(k),
               child: const Text('Débloquer'),
             ),
@@ -380,24 +394,27 @@ class _HomeScreenState extends State<HomeScreen> {
     final status = known?.status;
     final name = (known != null && known.label.isNotEmpty) ? known.label : d.displayName;
     final present = _scanning || _isPresent(d);
-    return ListTile(
-      leading: Opacity(
-        opacity: present ? 1 : 0.45,
-        child: CircleAvatar(
-        backgroundColor: _statusColor(status).withValues(alpha: 0.15),
-        child: Icon(_iconFor(d), color: _statusColor(status)),
-      )),
-      title: Text(name),
-      subtitle: Text([
+    final t = known?.firstSeen;
+    return DeviceCard(
+      icon: status == DeviceStatus.nouveau ? Icons.warning_amber_rounded : _iconFor(d),
+      iconFg: WfColors.fg(status),
+      iconBg: WfColors.bg(status),
+      title: name,
+      subtitle: [
         d.ip,
-        if (d.mac != null) d.mac!,
-        if (d.vendor != null) d.vendor!,
-        if (d.vendor == null && d.hasRandomMac) 'MAC privée',
-      ].join(' · ')),
-      trailing: Text(
-        _statusLabel(status),
-        style: TextStyle(color: _statusColor(status), fontWeight: FontWeight.w600),
+        if (status == DeviceStatus.nouveau && t != null)
+          'Première connexion ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}'
+        else if (d.vendor != null)
+          d.vendor!
+        else if (d.hasRandomMac)
+          'MAC privée',
+      ].join(' · '),
+      trailing: StatusPill(
+        label: _statusLabel(status),
+        fg: WfColors.fg(status),
+        bg: WfColors.bg(status),
       ),
+      dimmed: !present,
       onTap: () => _openDetails(d),
     );
   }
