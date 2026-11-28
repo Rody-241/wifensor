@@ -18,6 +18,9 @@ enum GuideMode { trouverMac, bloquer, debloquer }
 /// - modes bloquer / debloquer : true si l'utilisateur confirme « C'est fait ».
 class BoxGuideScreen extends StatefulWidget {
   final BoxGuide guide;
+
+  /// Appelé quand la page de la box révèle sa marque (ex. « airtel »).
+  final void Function(String brandId)? onBrandDetected;
   final String gatewayIp;
   final GuideMode mode;
   final String deviceIp;
@@ -27,6 +30,7 @@ class BoxGuideScreen extends StatefulWidget {
   const BoxGuideScreen({
     super.key,
     required this.guide,
+    this.onBrandDetected,
     required this.gatewayIp,
     required this.mode,
     required this.deviceIp,
@@ -42,6 +46,7 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
   WebViewController? _web;
   final _macCtrl = TextEditingController();
   int _step = 0;
+  late BoxGuide _guide = widget.guide;
 
   /// Où en est l'utilisateur dans la page de la box, d'après le script :
   /// login, home, filter (page de filtrage), adding (champ MAC visible),
@@ -58,9 +63,9 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
   String get _url => 'http://${widget.gatewayIp}';
 
   List<String> get _steps => switch (widget.mode) {
-        GuideMode.trouverMac => widget.guide.findMacSteps,
-        GuideMode.bloquer => widget.guide.blockSteps,
-        GuideMode.debloquer => widget.guide.unblockSteps,
+        GuideMode.trouverMac => _guide.findMacSteps,
+        GuideMode.bloquer => _guide.blockSteps,
+        GuideMode.debloquer => _guide.unblockSteps,
       };
 
   String get _title => switch (widget.mode) {
@@ -135,6 +140,13 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
       if (wanted && norm(body).indexOf(wanted) >= 0) state = 'listed';
     }
     if (state !== lastState) { lastState = state; post('state:' + state); }
+    var look = (document.title + ' ' + body.slice(0, 3000) + ' ' +
+      Array.prototype.map.call(document.querySelectorAll('img'), function(i){ return (i.src || '') + ' ' + (i.alt || ''); }).join(' ')).toLowerCase();
+    var brands = [['airtel_zlt', /airtel|zlt/], ['canalbox', /canalbox|canal\\+/], ['tplink', /tp-?link/],
+                  ['huawei', /huawei|hilink/], ['zte', /(^|[^a-z])zte([^a-z]|\$)/], ['tenda', /tenda/]];
+    for (var b = 0; b < brands.length; b++) {
+      if (brands[b][1].test(look)) { if (window.__wfBrand !== brands[b][0]) { window.__wfBrand = brands[b][0]; post('brand:' + brands[b][0]); } break; }
+    }
   }, 1200);
   if ($find) {
     var last = '';
@@ -182,7 +194,16 @@ class _BoxGuideScreenState extends State<BoxGuideScreen> {
 
   void _onMessage(JavaScriptMessage msg) {
     final m = msg.message.trim();
-    if (m.startsWith('state:')) {
+    if (m.startsWith('brand:')) {
+      final id = m.substring(6);
+      if (_guide.id == 'autre' && guideById(id).id == id && mounted) {
+        setState(() => _guide = guideById(id));
+        widget.onBrandDetected?.call(id);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Box reconnue : ${_guide.name}')),
+        );
+      }
+    } else if (m.startsWith('state:')) {
       _onPageState(m.substring(6));
     } else if (m.startsWith('mac:')) {
       _onMacFromPage(m.substring(4));

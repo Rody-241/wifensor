@@ -36,6 +36,30 @@ class BoxDetector {
           text.write(body);
           final found = _match(text.toString());
           if (found != null) return found;
+          // Les box récentes construisent leur page avec du code : on lit
+          // aussi les fichiers .js et .css qu'elle charge.
+          final assets = RegExp(r'''(?:src|href)=["']([^"'#?]+\.(?:js|css|json))''')
+              .allMatches(body)
+              .map((m) => m.group(1)!)
+              .take(8);
+          for (final a in assets) {
+            final url = a.startsWith('http')
+                ? Uri.parse(a)
+                : Uri.parse('http://$gatewayIp/').resolve(a);
+            if (url.host != gatewayIp) continue;
+            try {
+              final r2 = await (await client.getUrl(url).timeout(const Duration(seconds: 4)))
+                  .close()
+                  .timeout(const Duration(seconds: 5));
+              final js = await r2
+                  .transform(const Utf8Decoder(allowMalformed: true))
+                  .take(40)
+                  .join()
+                  .timeout(const Duration(seconds: 6));
+              final f = _match('$a\n$js');
+              if (f != null) return f;
+            } catch (_) {}
+          }
         } catch (_) {
           // On essaie l'adresse suivante.
         }

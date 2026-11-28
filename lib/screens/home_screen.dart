@@ -45,6 +45,15 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!manual) await _detectBox();
   }
 
+  Future<void> _onBrandFromPage(String id) async {
+    await _store.saveRouterConfig({'brand': id, 'source': 'auto'});
+    if (!mounted) return;
+    setState(() {
+      _brandId = id;
+      _brandAuto = true;
+    });
+  }
+
   /// Reconnaît la box tout seul (sauf si l'utilisateur l'a choisie à la main).
   Future<void> _detectBox() async {
     final ip = _net?.gatewayIp;
@@ -71,6 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(
         builder: (_) => BoxGuideScreen(
           guide: _guide,
+          onBrandDetected: _onBrandFromPage,
           gatewayIp: _gatewayIp,
           mode: mode,
           deviceIp: d.ip,
@@ -373,6 +383,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute(
         builder: (_) => BoxGuideScreen(
           guide: _guide,
+          onBrandDetected: _onBrandFromPage,
           gatewayIp: _gatewayIp,
           mode: GuideMode.debloquer,
           deviceIp: d.ip,
